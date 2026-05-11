@@ -1,43 +1,78 @@
-//
-//  NoteDadUITests.swift
-//  NoteDadUITests
-//
-//  Created by ismail ihsan bülbül on 21.04.2026.
-//
-
 import XCTest
 
 final class NoteDadUITests: XCTestCase {
+    private var storageURL: URL!
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+        storageURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("NoteDadUITests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: storageURL, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
-    @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
-        app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
-    }
-
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+        if let storageURL {
+            try? FileManager.default.removeItem(at: storageURL)
         }
+    }
+
+    @MainActor
+    func testInitialLaunchCreatesEditableNote() throws {
+        let app = launchApp()
+
+        let editor = app.textViews["note-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.click()
+        editor.typeText("# Başlık\nGövde")
+
+        XCTAssertTrue(waitForFile(named: "Baslik.md"))
+    }
+
+    @MainActor
+    func testCommandNCreatesNewNoteAndCommandPOpensPalette() throws {
+        let app = launchApp()
+        XCTAssertTrue(app.textViews["note-editor"].waitForExistence(timeout: 5))
+
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(waitForMinimumNoteCount(2))
+
+        app.typeKey("p", modifierFlags: .command)
+        XCTAssertTrue(app.textFields["command-palette-search"].waitForExistence(timeout: 2))
+    }
+
+    private func launchApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["NOTEDAD_STORAGE_PATH"] = storageURL.path
+        app.launchEnvironment["NOTEDAD_RESET_DEFAULTS"] = "1"
+        app.launch()
+        return app
+    }
+
+    private func waitForFile(named fileName: String) -> Bool {
+        let deadline = Date().addingTimeInterval(3)
+        let fileURL = storageURL.appendingPathComponent(fileName)
+
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        return false
+    }
+
+    private func waitForMinimumNoteCount(_ count: Int) -> Bool {
+        let deadline = Date().addingTimeInterval(3)
+
+        while Date() < deadline {
+            let files = (try? FileManager.default.contentsOfDirectory(at: storageURL, includingPropertiesForKeys: nil)) ?? []
+            if files.filter({ ["md", "txt"].contains($0.pathExtension) }).count >= count {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        return false
     }
 }

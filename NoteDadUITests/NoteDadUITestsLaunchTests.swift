@@ -20,6 +20,10 @@ final class NoteDadUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        let storageURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("NoteDadLaunchUITests-\(UUID().uuidString)", isDirectory: true)
+        app.launchEnvironment["NOTEDAD_STORAGE_PATH"] = storageURL.path
+        app.launchEnvironment["NOTEDAD_RESET_DEFAULTS"] = "1"
         app.launch()
 
         // Insert steps here to perform after app launch but before taking a screenshot,
@@ -31,5 +35,6 @@ final class NoteDadUITestsLaunchTests: XCTestCase {
         attachment.name = "Launch Screen"
         attachment.lifetime = .keepAlways
         add(attachment)
+        try? FileManager.default.removeItem(at: storageURL)
     }
 }
