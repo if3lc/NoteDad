@@ -9,6 +9,7 @@ struct CommandPaletteView: View {
     @State private var query = ""
     @State private var selectedIndex = 0
     @State private var keyMonitor: Any?
+    @State private var notePendingDeletion: Note?
 
     private var results: [SearchResult] {
         store.search(query)
@@ -50,18 +51,22 @@ struct CommandPaletteView: View {
                                 ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                                     CommandPaletteRow(
                                         result: result,
-                                        isSelected: index == selectedIndex
+                                        isSelected: index == selectedIndex,
+                                        onOpen: {
+                                            selectedIndex = index
+                                            openSelection()
+                                        },
+                                        onDelete: {
+                                            notePendingDeletion = result.note
+                                        }
                                     )
                                     .id(index)
-                                    .onTapGesture {
-                                        selectedIndex = index
-                                        openSelection()
-                                    }
                                     .accessibilityIdentifier("command-palette-result-\(index)")
                                 }
                             }
                         }
                     }
+                    .background(ScrollViewScrollerConfigurator())
                     .frame(maxHeight: 330)
                     .onChange(of: selectedIndex) { _, newValue in
                         proxy.scrollTo(newValue, anchor: .center)
@@ -96,6 +101,16 @@ struct CommandPaletteView: View {
                 appState.dismissCommandPalette()
             }
         }
+        .alert("Delete note?", isPresented: deleteConfirmationBinding, presenting: notePendingDeletion) { note in
+            Button("Delete", role: .destructive) {
+                delete(note)
+            }
+            Button("Cancel", role: .cancel) {
+                notePendingDeletion = nil
+            }
+        } message: { note in
+            Text("Move “\(note.title)” to Trash?")
+        }
     }
 
     private var emptyState: some View {
@@ -128,6 +143,22 @@ struct CommandPaletteView: View {
         guard results.indices.contains(selectedIndex) else { return }
         store.openSearchResult(results[selectedIndex])
         appState.dismissCommandPalette()
+    }
+
+    private func delete(_ note: Note) {
+        store.delete(note)
+        notePendingDeletion = nil
+        selectedIndex = min(selectedIndex, max(results.count - 1, 0))
+    }
+
+    private var deleteConfirmationBinding: Binding<Bool> {
+        Binding {
+            notePendingDeletion != nil
+        } set: { isPresented in
+            if !isPresented {
+                notePendingDeletion = nil
+            }
+        }
     }
 
     private func installKeyMonitor() {
@@ -174,31 +205,69 @@ struct CommandPaletteView: View {
 private struct CommandPaletteRow: View {
     var result: SearchResult
     var isSelected: Bool
+    var onOpen: () -> Void
+    var onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(result.note.title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(result.note.title)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                Spacer()
+                    Spacer()
 
-                Text(result.note.format.displayName)
-                    .font(.system(size: 11, weight: .medium))
+                    Text(result.note.format.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(result.snippet.isEmpty ? result.note.url.lastPathComponent : result.snippet)
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onOpen)
 
-            Text(result.snippet.isEmpty ? result.note.url.lastPathComponent : result.snippet)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Delete note")
+            .accessibilityLabel("Delete note")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
         .contentShape(Rectangle())
+    }
+}
+
+private struct ScrollViewScrollerConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            configure(from: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            configure(from: nsView)
+        }
+    }
+
+    private func configure(from view: NSView) {
+        applyNoteDadScrollers(around: view)
     }
 }

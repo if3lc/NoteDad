@@ -16,11 +16,7 @@ struct NoteTextEditor: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
-        let verticalScroller = MinimalScroller()
-        verticalScroller.controlSize = .small
-        scrollView.verticalScroller = verticalScroller
+        applyNoteDadScroller(to: scrollView)
 
         let textView = RawCopyTextView()
         textView.isMarkdownMode = format == .markdown
@@ -312,11 +308,5 @@ private final class RawCopyTextView: NSTextView {
         didChangeText()
         setSelectedRange(NSRange(location: range.location + (replacement as NSString).length, length: 0))
         return true
-    }
-}
-
-private final class MinimalScroller: NSScroller {
-    override class func scrollerWidth(for controlSize: NSControl.ControlSize, scrollerStyle: NSScroller.Style) -> CGFloat {
-        8
     }
 }

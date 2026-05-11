@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -31,7 +32,17 @@ struct ContentView: View {
                     .zIndex(10)
             }
         }
+        .background(WindowTitleUpdater(title: windowTitle, representedURL: store.activeNote?.url))
         .animation(.easeOut(duration: 0.12), value: appState.isCommandPalettePresented)
+    }
+
+    private var windowTitle: String {
+        guard let title = store.activeNote?.title.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else {
+            return "NoteDad"
+        }
+
+        return title
     }
 
     private var editorSurface: some View {
@@ -62,6 +73,10 @@ struct ContentView: View {
 
             Spacer()
 
+            Text("\(store.notes.count) notes")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
             Button {
                 appState.presentCommandPalette()
             } label: {
@@ -71,26 +86,17 @@ struct ContentView: View {
                     Text("⌘P")
                         .font(.system(size: 11, weight: .semibold))
                 }
-                .padding(.horizontal, 7)
-                .frame(height: 18)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color(nsColor: .separatorColor).opacity(0.24))
-                )
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help("Search notes")
             .accessibilityLabel("Search notes")
 
-            Text("\(store.notes.count) notes")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-
             Button {
                 store.openNotesFolder()
             } label: {
                 Image(systemName: "folder")
+                    .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
@@ -98,7 +104,8 @@ struct ContentView: View {
             .accessibilityLabel("Open notes folder")
         }
         .padding(.horizontal, 14)
-        .frame(height: 24)
+        .padding(.vertical, 6)
+        .frame(minHeight: 32)
         .background(.bar)
     }
 
@@ -156,5 +163,30 @@ struct ContentView: View {
                 store.errorMessage = nil
             }
         }
+    }
+}
+
+private struct WindowTitleUpdater: NSViewRepresentable {
+    var title: String
+    var representedURL: URL?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            updateWindow(from: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            updateWindow(from: nsView)
+        }
+    }
+
+    private func updateWindow(from view: NSView) {
+        guard let window = view.window else { return }
+        window.title = title
+        window.representedURL = representedURL
     }
 }

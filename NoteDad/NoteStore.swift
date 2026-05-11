@@ -142,6 +142,14 @@ final class NoteStore: ObservableObject {
         }
     }
 
+    func delete(_ note: Note) {
+        do {
+            try deleteNote(note)
+        } catch {
+            handle(error)
+        }
+    }
+
     func setActiveFormat(_ format: NoteFormat) {
         guard var note = activeNote, note.format != format else { return }
 
@@ -253,6 +261,37 @@ final class NoteStore: ObservableObject {
 
     private var quickNoteURL: URL {
         rootURL.appendingPathComponent("Quick Note").appendingPathExtension(NoteFormat.markdown.fileExtension)
+    }
+
+    private func deleteNote(_ note: Note) throws {
+        let isDeletingActiveNote = activeNote?.url == note.url
+
+        if isDeletingActiveNote {
+            saveTask?.cancel()
+        }
+
+        var trashedURL: NSURL?
+        if fileManager.fileExists(atPath: note.url.path) {
+            try fileManager.trashItem(at: note.url, resultingItemURL: &trashedURL)
+        }
+
+        notes.removeAll { $0.url == note.url }
+
+        if isDeletingActiveNote {
+            activeNote = nil
+            isApplyingActiveContent = true
+            activeContent = ""
+            isApplyingActiveContent = false
+
+            if let nextNote = notes.sorted(by: { $0.modifiedAt > $1.modifiedAt }).first {
+                try open(nextNote)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.lastNotePathKey)
+                try createNewNote(format: defaultFormat)
+            }
+        }
+
+        savingState = .saved
     }
 
     private func ensureRootFolder() throws {
