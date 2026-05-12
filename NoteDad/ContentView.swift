@@ -4,7 +4,6 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: NoteStore
     @EnvironmentObject private var appState: AppState
-    @AppStorage(AppPreferences.alwaysOnTopKey) private var isAlwaysOnTop = false
     @State private var isFloatingControlHovered = false
     @State private var hoveredFloatingControlID: String?
 
@@ -39,7 +38,7 @@ struct ContentView: View {
             WindowChromeUpdater(
                 title: windowTitle,
                 representedURL: store.activeNote?.url,
-                isAlwaysOnTop: isAlwaysOnTop
+                isAlwaysOnTop: appState.isAlwaysOnTop
             )
         )
         .animation(.easeOut(duration: 0.12), value: appState.isCommandPalettePresented)
@@ -150,9 +149,10 @@ struct ContentView: View {
 
     private var alwaysOnTopButton: some View {
         let isHovered = hoveredFloatingControlID == "alwaysOnTop"
+        let isAlwaysOnTop = appState.isAlwaysOnTop
 
         return Button {
-            isAlwaysOnTop.toggle()
+            appState.toggleAlwaysOnTop()
         } label: {
             Image(systemName: isAlwaysOnTop ? "pin.fill" : "pin")
                 .font(.system(size: 12, weight: .semibold))

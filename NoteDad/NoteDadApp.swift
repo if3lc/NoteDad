@@ -34,38 +34,45 @@ struct NoteDadCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Note") {
-                do {
-                    try store.createNewNote()
-                } catch {
-                    store.errorMessage = error.localizedDescription
-                }
+                createNote()
             }
-            .keyboardShortcut("n", modifiers: .command)
+            .noteDadShortcut(NoteDadShortcuts.newNote)
         }
 
         CommandGroup(replacing: .printItem) {
             Button("Open Note...") {
                 appState.presentCommandPalette()
             }
-            .keyboardShortcut("p", modifiers: .command)
+            .noteDadShortcut(NoteDadShortcuts.openNote)
         }
 
         CommandMenu("Notes") {
             Button("New Markdown Note") {
-                do {
-                    try store.createNewNote(format: .markdown)
-                } catch {
-                    store.errorMessage = error.localizedDescription
-                }
+                createNote(format: .markdown)
             }
 
             Button("New Text Note") {
-                do {
-                    try store.createNewNote(format: .plainText)
-                } catch {
-                    store.errorMessage = error.localizedDescription
-                }
+                createNote(format: .plainText)
             }
+
+            Divider()
+
+            Button("Use Markdown Format") {
+                store.setActiveFormat(.markdown)
+            }
+            .noteDadShortcut(NoteDadShortcuts.markdownFormat)
+
+            Button("Use Text Format") {
+                store.setActiveFormat(.plainText)
+            }
+            .noteDadShortcut(NoteDadShortcuts.plainTextFormat)
+
+            Divider()
+
+            Button(appState.isAlwaysOnTop ? "Disable Always on Top" : "Enable Always on Top") {
+                appState.toggleAlwaysOnTop()
+            }
+            .noteDadShortcut(NoteDadShortcuts.alwaysOnTop)
 
             Divider()
 
@@ -73,5 +80,19 @@ struct NoteDadCommands: Commands {
                 store.openNotesFolder()
             }
         }
+    }
+
+    private func createNote(format: NoteFormat? = nil) {
+        do {
+            try store.createNewNote(format: format)
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private extension View {
+    func noteDadShortcut(_ shortcut: NoteDadShortcuts.Shortcut) -> some View {
+        keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers)
     }
 }
