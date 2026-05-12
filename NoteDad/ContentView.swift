@@ -4,6 +4,9 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: NoteStore
     @EnvironmentObject private var appState: AppState
+    @AppStorage(AppPreferences.alwaysOnTopKey) private var isAlwaysOnTop = false
+    @State private var isFloatingControlHovered = false
+    @State private var hoveredFloatingControlID: String?
 
     var body: some View {
         ZStack {
@@ -32,7 +35,13 @@ struct ContentView: View {
                     .zIndex(10)
             }
         }
-        .background(WindowTitleUpdater(title: windowTitle, representedURL: store.activeNote?.url))
+        .background(
+            WindowChromeUpdater(
+                title: windowTitle,
+                representedURL: store.activeNote?.url,
+                isAlwaysOnTop: isAlwaysOnTop
+            )
+        )
         .animation(.easeOut(duration: 0.12), value: appState.isCommandPalettePresented)
     }
 
@@ -58,6 +67,7 @@ struct ContentView: View {
             floatingFormatControl
                 .padding(.top, 10)
                 .padding(.trailing, 14)
+                .zIndex(2)
         }
     }
 
@@ -113,6 +123,10 @@ struct ContentView: View {
         HStack(spacing: 2) {
             formatButton(format: .markdown, systemImage: "number", help: "Markdown")
             formatButton(format: .plainText, systemImage: "text.alignleft", help: "Plain text")
+            Divider()
+                .frame(height: 14)
+                .padding(.horizontal, 2)
+            alwaysOnTopButton
         }
         .padding(3)
         .background(.regularMaterial)
@@ -121,11 +135,47 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .opacity(isFloatingControlHovered ? 1 : 0.48)
+        .pointingHandOnHover()
+        .onHover { isHovering in
+            isFloatingControlHovered = isHovering
+            if !isHovering {
+                hoveredFloatingControlID = nil
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: isFloatingControlHovered)
         .accessibilityIdentifier("active-format-picker")
+    }
+
+    private var alwaysOnTopButton: some View {
+        let isHovered = hoveredFloatingControlID == "alwaysOnTop"
+
+        return Button {
+            isAlwaysOnTop.toggle()
+        } label: {
+            Image(systemName: isAlwaysOnTop ? "pin.fill" : "pin")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 25, height: 23)
+                .foregroundStyle(isAlwaysOnTop ? Color.accentColor : (isHovered ? Color.primary : Color.secondary))
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(floatingButtonFill(isSelected: isAlwaysOnTop, isHovered: isHovered))
+                )
+        }
+        .buttonStyle(.plain)
+        .help(isAlwaysOnTop ? "Keep window normal" : "Keep window on top")
+        .accessibilityLabel("Keep window on top")
+        .accessibilityValue(isAlwaysOnTop ? "On" : "Off")
+        .onHover { isHovering in
+            hoveredFloatingControlID = isHovering ? "alwaysOnTop" : nil
+        }
     }
 
     private func formatButton(format: NoteFormat, systemImage: String, help: String) -> some View {
         let isActive = (store.activeNote?.format ?? store.defaultFormat) == format
+        let controlID = "format-\(format.rawValue)"
+        let isHovered = hoveredFloatingControlID == controlID
 
         return Button {
             store.setActiveFormat(format)
@@ -133,15 +183,30 @@ struct ContentView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: 25, height: 23)
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isActive ? Color.accentColor : (isHovered ? Color.primary : Color.secondary))
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isActive ? Color.accentColor.opacity(0.16) : Color.clear)
+                        .fill(floatingButtonFill(isSelected: isActive, isHovered: isHovered))
                 )
         }
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(help)
+        .onHover { isHovering in
+            hoveredFloatingControlID = isHovering ? controlID : nil
+        }
+    }
+
+    private func floatingButtonFill(isSelected: Bool, isHovered: Bool) -> Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.16)
+        }
+
+        if isHovered {
+            return Color(nsColor: .controlAccentColor).opacity(0.08)
+        }
+
+        return .clear
     }
 
     private var statusColor: Color {
@@ -166,9 +231,44 @@ struct ContentView: View {
     }
 }
 
-private struct WindowTitleUpdater: NSViewRepresentable {
+private extension View {
+    func pointingHandOnHover() -> some View {
+        modifier(PointingHandHoverModifier())
+    }
+}
+
+private struct PointingHandHoverModifier: ViewModifier {
+    @State private var didPushCursor = false
+
+    func body(content: Content) -> some View {
+        content.onContinuousHover { phase in
+            switch phase {
+            case .active:
+                pushCursorIfNeeded()
+                NSCursor.pointingHand.set()
+            case .ended:
+                popCursorIfNeeded()
+            }
+        }
+    }
+
+    private func pushCursorIfNeeded() {
+        guard !didPushCursor else { return }
+        NSCursor.pointingHand.push()
+        didPushCursor = true
+    }
+
+    private func popCursorIfNeeded() {
+        guard didPushCursor else { return }
+        NSCursor.pop()
+        didPushCursor = false
+    }
+}
+
+private struct WindowChromeUpdater: NSViewRepresentable {
     var title: String
     var representedURL: URL?
+    var isAlwaysOnTop: Bool
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -188,5 +288,6 @@ private struct WindowTitleUpdater: NSViewRepresentable {
         guard let window = view.window else { return }
         window.title = title
         window.representedURL = representedURL
+        window.level = isAlwaysOnTop ? .floating : .normal
     }
 }
