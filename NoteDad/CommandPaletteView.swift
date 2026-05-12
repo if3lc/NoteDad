@@ -73,7 +73,7 @@ struct CommandPaletteView: View {
                     }
                 }
             }
-            .frame(width: 560)
+            .frame(maxWidth: 560)
             .background(.regularMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
@@ -81,6 +81,7 @@ struct CommandPaletteView: View {
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.18), radius: 28, y: 18)
+            .padding(.horizontal, 12)
             .onAppear {
                 selectedIndex = 0
                 installKeyMonitor()

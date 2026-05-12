@@ -14,7 +14,7 @@ struct ContentView: View {
 
                 editorFooter
             }
-            .frame(minWidth: 700, minHeight: 520)
+            .frame(minWidth: 280, minHeight: 180)
             .task {
                 store.bootstrap()
             }
@@ -79,12 +79,15 @@ struct ContentView: View {
             Text(store.savingState.label)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
 
             Spacer()
 
             Text("\(store.notes.count) notes")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
             Button {
                 appState.presentCommandPalette()
