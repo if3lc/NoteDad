@@ -101,16 +101,22 @@ struct CommandPaletteView: View {
             .onExitCommand {
                 appState.dismissCommandPalette()
             }
-        }
-        .alert("Delete note?", isPresented: deleteConfirmationBinding, presenting: notePendingDeletion) { note in
-            Button("Delete", role: .destructive) {
-                delete(note)
+
+            if notePendingDeletion != nil {
+                Color.black.opacity(0.08)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        notePendingDeletion = nil
+                    }
+                    .transition(.opacity)
+                    .zIndex(20)
             }
-            Button("Cancel", role: .cancel) {
-                notePendingDeletion = nil
+
+            if let notePendingDeletion {
+                deleteConfirmation(for: notePendingDeletion)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    .zIndex(21)
             }
-        } message: { note in
-            Text("Move “\(note.title)” to Trash?")
         }
     }
 
@@ -125,6 +131,69 @@ struct CommandPaletteView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 42)
+    }
+
+    private func deleteConfirmation(for note: Note) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "trash")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 22, height: 22)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Delete note?")
+                        .font(.system(size: 14, weight: .semibold))
+
+                    Text("Move “\(note.title)” to Trash?")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+
+                Button {
+                    notePendingDeletion = nil
+                } label: {
+                    Text("Cancel")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(height: 24)
+                        .padding(.horizontal, 9)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .pointingHandCursor()
+
+                Button {
+                    delete(note)
+                } label: {
+                    Text("Delete")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(height: 24)
+                        .padding(.horizontal, 9)
+                        .foregroundStyle(.white)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.red)
+                        )
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            }
+        }
+        .padding(14)
+        .frame(width: 330)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 24, y: 14)
+        .accessibilityElement(children: .contain)
     }
 
     private func moveSelection(_ direction: MoveCommandDirection) {
@@ -146,20 +215,21 @@ struct CommandPaletteView: View {
         appState.dismissCommandPalette()
     }
 
+    @discardableResult
+    private func requestDeleteSelection() -> Bool {
+        guard notePendingDeletion == nil,
+              results.indices.contains(selectedIndex) else {
+            return false
+        }
+
+        notePendingDeletion = results[selectedIndex].note
+        return true
+    }
+
     private func delete(_ note: Note) {
         store.delete(note)
         notePendingDeletion = nil
         selectedIndex = min(selectedIndex, max(results.count - 1, 0))
-    }
-
-    private var deleteConfirmationBinding: Binding<Bool> {
-        Binding {
-            notePendingDeletion != nil
-        } set: { isPresented in
-            if !isPresented {
-                notePendingDeletion = nil
-            }
-        }
     }
 
     private func installKeyMonitor() {
@@ -178,9 +248,18 @@ struct CommandPaletteView: View {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard appState.isCommandPalettePresented else { return false }
+
+        if let notePendingDeletion {
+            return handleDeleteConfirmationKeyDown(event, note: notePendingDeletion)
+        }
+
+        if isCommandBackspace(event) {
+            return requestDeleteSelection()
+        }
+
         let commandModifiers: NSEvent.ModifierFlags = [.command, .option, .control]
-        guard appState.isCommandPalettePresented,
-              event.modifierFlags.intersection(commandModifiers).isEmpty else {
+        guard event.modifierFlags.intersection(commandModifiers).isEmpty else {
             return false
         }
 
@@ -200,6 +279,32 @@ struct CommandPaletteView: View {
         default:
             return false
         }
+    }
+
+    private func handleDeleteConfirmationKeyDown(_ event: NSEvent, note: Note) -> Bool {
+        if isCommandBackspace(event) {
+            delete(note)
+            return true
+        }
+
+        let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        guard activeModifiers.isEmpty else { return false }
+
+        switch event.keyCode {
+        case 36, 76:
+            delete(note)
+        case 53:
+            notePendingDeletion = nil
+        default:
+            break
+        }
+
+        return true
+    }
+
+    private func isCommandBackspace(_ event: NSEvent) -> Bool {
+        let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        return event.keyCode == 51 && activeModifiers == .command
     }
 }
 
@@ -242,7 +347,8 @@ private struct CommandPaletteRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Delete note")
+            .pointingHandCursor()
+            .help("Delete note (⌘⌫)")
             .accessibilityLabel("Delete note")
         }
         .padding(.horizontal, 14)
@@ -250,6 +356,93 @@ private struct CommandPaletteRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
         .contentShape(Rectangle())
+    }
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursorModifier())
+    }
+}
+
+private struct PointingHandCursorModifier: ViewModifier {
+    @State private var didPushCursor = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(PointingHandCursorRegion().allowsHitTesting(false))
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:
+                    pushCursorIfNeeded()
+                    NSCursor.pointingHand.set()
+                case .ended:
+                    popCursorIfNeeded()
+                }
+            }
+    }
+
+    private func pushCursorIfNeeded() {
+        guard !didPushCursor else { return }
+        NSCursor.pointingHand.push()
+        didPushCursor = true
+    }
+
+    private func popCursorIfNeeded() {
+        guard didPushCursor else { return }
+        NSCursor.pop()
+        didPushCursor = false
+    }
+}
+
+private struct PointingHandCursorRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        PointingHandCursorView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.window?.invalidateCursorRects(for: nsView)
+    }
+}
+
+private final class PointingHandCursorView: NSView {
+    private var trackingArea: NSTrackingArea?
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func updateTrackingAreas() {
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        self.trackingArea = trackingArea
+
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
     }
 }
 
