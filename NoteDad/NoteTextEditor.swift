@@ -1,11 +1,19 @@
 import AppKit
 import SwiftUI
 
+struct NoteFindSelection: Equatable {
+    var selectedRange: NSRange?
+    var token: Int
+
+    static let empty = NoteFindSelection(selectedRange: nil, token: 0)
+}
+
 struct NoteTextEditor: NSViewRepresentable {
     @Binding var text: String
     var format: NoteFormat
     var fontSize: Double
     var focusToken: Int
+    var findSelection: NoteFindSelection = .empty
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -68,12 +76,33 @@ struct NoteTextEditor: NSViewRepresentable {
                 textView.window?.makeFirstResponder(textView)
             }
         }
+
+        if context.coordinator.lastFindSelectionToken != findSelection.token {
+            context.coordinator.lastFindSelectionToken = findSelection.token
+            showFindSelection(findSelection, in: textView)
+        }
+    }
+
+    private func showFindSelection(_ selection: NoteFindSelection, in textView: NSTextView) {
+        guard let range = selection.selectedRange else { return }
+
+        let contentLength = (textView.string as NSString).length
+        guard range.location != NSNotFound,
+              range.length > 0,
+              NSMaxRange(range) <= contentLength else {
+            return
+        }
+
+        textView.setSelectedRange(range)
+        textView.scrollRangeToVisible(range)
+        textView.showFindIndicator(for: range)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: NoteTextEditor
         fileprivate weak var textView: RawCopyTextView?
         var lastFocusToken = -1
+        var lastFindSelectionToken = -1
 
         init(_ parent: NoteTextEditor) {
             self.parent = parent

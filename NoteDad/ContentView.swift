@@ -6,6 +6,11 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var isFloatingControlHovered = false
     @State private var hoveredFloatingControlID: String?
+    @State private var findQuery = ""
+    @State private var findMatches: [NSRange] = []
+    @State private var findSelectedIndex = 0
+    @State private var findSelectionToken = 0
+    @FocusState private var isFindFocused: Bool
 
     var body: some View {
         ZStack {
@@ -42,6 +47,25 @@ struct ContentView: View {
             )
         )
         .animation(.easeOut(duration: 0.12), value: appState.isCommandPalettePresented)
+        .animation(.easeOut(duration: 0.12), value: appState.isFindPresented)
+        .onChange(of: appState.findPresentationToken) { _, _ in
+            updateFindMatches(resetSelection: true)
+            focusFindField()
+        }
+        .onChange(of: appState.findNavigationRequest) { _, request in
+            handleFindNavigation(request)
+        }
+        .onChange(of: findQuery) { _, _ in
+            updateFindMatches(resetSelection: true)
+        }
+        .onChange(of: store.activeContent) { _, _ in
+            guard appState.isFindPresented else { return }
+            updateFindMatches(resetSelection: false)
+        }
+        .onChange(of: store.activeNote?.id) { _, _ in
+            guard appState.isFindPresented else { return }
+            updateFindMatches(resetSelection: true)
+        }
     }
 
     private var windowTitle: String {
@@ -53,21 +77,127 @@ struct ContentView: View {
         return title
     }
 
+    private var activeFindSelection: NoteFindSelection {
+        guard appState.isFindPresented,
+              findMatches.indices.contains(findSelectedIndex) else {
+            return NoteFindSelection(selectedRange: nil, token: findSelectionToken)
+        }
+
+        return NoteFindSelection(selectedRange: findMatches[findSelectedIndex], token: findSelectionToken)
+    }
+
+    private var trimmedFindQuery: String {
+        findQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var findStatusLabel: String {
+        guard !trimmedFindQuery.isEmpty else { return "" }
+        guard findMatches.indices.contains(findSelectedIndex) else { return "0/0" }
+        return "\(findSelectedIndex + 1)/\(findMatches.count)"
+    }
+
     private var editorSurface: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             NoteTextEditor(
                 text: $store.activeContent,
                 format: store.activeNote?.format ?? store.defaultFormat,
                 fontSize: store.editorFontSize,
-                focusToken: store.focusRequestID
+                focusToken: store.focusRequestID,
+                findSelection: activeFindSelection
             )
             .background(Color(nsColor: .textBackgroundColor))
 
-            floatingFormatControl
-                .padding(.top, 10)
-                .padding(.trailing, 14)
-                .zIndex(2)
+            HStack(alignment: .top, spacing: 8) {
+                if appState.isFindPresented {
+                    findBar
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                Spacer(minLength: 8)
+
+                floatingFormatControl
+            }
+            .padding(.top, 10)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .zIndex(2)
         }
+    }
+
+    private var findBar: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            TextField("Find in note", text: $findQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($isFindFocused)
+                .onSubmit {
+                    moveFindSelection(.next)
+                }
+
+            if !trimmedFindQuery.isEmpty {
+                Text(findStatusLabel)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .frame(minWidth: 34, alignment: .trailing)
+            }
+
+            findNavigationButton(systemImage: "chevron.up", direction: .previous)
+            findNavigationButton(systemImage: "chevron.down", direction: .next)
+
+            Divider()
+                .frame(height: 14)
+
+            Button {
+                appState.dismissFind()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Close find")
+            .accessibilityLabel("Close find")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: 340)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onAppear {
+            focusFindField()
+        }
+        .onExitCommand {
+            appState.dismissFind()
+        }
+    }
+
+    private func findNavigationButton(systemImage: String, direction: NoteFindDirection) -> some View {
+        Button {
+            moveFindSelection(direction)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(findMatches.isEmpty ? Color.secondary.opacity(0.55) : Color.secondary)
+        .disabled(findMatches.isEmpty)
+        .help(direction == .next ? "Find next" : "Find previous")
+        .accessibilityLabel(direction == .next ? "Find next" : "Find previous")
     }
 
     private var editorFooter: some View {
@@ -212,6 +342,55 @@ struct ContentView: View {
         return .clear
     }
 
+    private func handleFindNavigation(_ request: NoteFindNavigationRequest) {
+        guard request.token > 0 else { return }
+
+        if trimmedFindQuery.isEmpty {
+            updateFindMatches(resetSelection: true)
+            focusFindField()
+            return
+        }
+
+        updateFindMatches(resetSelection: false)
+        moveFindSelection(request.direction)
+
+        focusFindField()
+    }
+
+    private func updateFindMatches(resetSelection: Bool) {
+        findMatches = NoteTextSearch.ranges(in: store.activeContent, matching: trimmedFindQuery)
+
+        if resetSelection {
+            findSelectedIndex = 0
+        } else {
+            findSelectedIndex = min(findSelectedIndex, max(findMatches.count - 1, 0))
+        }
+
+        findSelectionToken += 1
+    }
+
+    private func moveFindSelection(_ direction: NoteFindDirection) {
+        guard !findMatches.isEmpty else {
+            findSelectionToken += 1
+            return
+        }
+
+        switch direction {
+        case .next:
+            findSelectedIndex = (findSelectedIndex + 1) % findMatches.count
+        case .previous:
+            findSelectedIndex = (findSelectedIndex - 1 + findMatches.count) % findMatches.count
+        }
+
+        findSelectionToken += 1
+    }
+
+    private func focusFindField() {
+        DispatchQueue.main.async {
+            isFindFocused = true
+        }
+    }
+
     private var statusColor: Color {
         switch store.savingState {
         case .saved:
@@ -231,6 +410,32 @@ struct ContentView: View {
                 store.errorMessage = nil
             }
         }
+    }
+}
+
+private enum NoteTextSearch {
+    static func ranges(in text: String, matching query: String) -> [NSRange] {
+        guard !query.isEmpty else { return [] }
+
+        let nsText = text as NSString
+        guard nsText.length > 0 else { return [] }
+
+        let options: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        var ranges: [NSRange] = []
+        var searchRange = NSRange(location: 0, length: nsText.length)
+
+        while searchRange.length > 0 {
+            let match = nsText.range(of: query, options: options, range: searchRange)
+            guard match.location != NSNotFound, match.length > 0 else { break }
+
+            ranges.append(match)
+
+            let nextLocation = NSMaxRange(match)
+            guard nextLocation < nsText.length else { break }
+            searchRange = NSRange(location: nextLocation, length: nsText.length - nextLocation)
+        }
+
+        return ranges
     }
 }
 

@@ -46,6 +46,23 @@ struct NoteDadCommands: Commands {
             .noteDadShortcut(NoteDadShortcuts.openNote)
         }
 
+        CommandGroup(after: .pasteboard) {
+            Button("Find in Note") {
+                appState.presentFind()
+            }
+            .noteDadShortcut(NoteDadShortcuts.findInNote)
+
+            Button("Find Next") {
+                appState.findNext()
+            }
+            .noteDadShortcut(NoteDadShortcuts.findNext)
+
+            Button("Find Previous") {
+                appState.findPrevious()
+            }
+            .noteDadShortcut(NoteDadShortcuts.findPrevious)
+        }
+
         CommandMenu("Notes") {
             Button("New Markdown Note") {
                 createNote(format: .markdown)
