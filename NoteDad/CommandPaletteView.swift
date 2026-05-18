@@ -60,7 +60,6 @@ struct CommandPaletteView: View {
                                             notePendingDeletion = result.note
                                         }
                                     )
-                                    .id(index)
                                     .accessibilityIdentifier("command-palette-result-\(index)")
                                 }
                             }
@@ -69,7 +68,8 @@ struct CommandPaletteView: View {
                     .background(ScrollViewScrollerConfigurator())
                     .frame(maxHeight: 330)
                     .onChange(of: selectedIndex) { _, newValue in
-                        proxy.scrollTo(newValue, anchor: .center)
+                        guard results.indices.contains(newValue) else { return }
+                        proxy.scrollTo(results[newValue].id, anchor: .center)
                     }
                 }
             }
