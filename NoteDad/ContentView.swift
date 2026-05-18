@@ -96,6 +96,22 @@ struct ContentView: View {
         return "\(findSelectedIndex + 1)/\(findMatches.count)"
     }
 
+    private var footerStats: some View {
+        let stats = NoteContentStats(text: store.activeContent)
+
+        return ViewThatFits(in: .horizontal) {
+            Text(stats.fullLabel)
+            Text(stats.compactLabel)
+            Text(stats.tinyLabel)
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+        .accessibilityLabel(Text(stats.accessibilityLabel))
+    }
+
     private var editorSurface: some View {
         ZStack(alignment: .top) {
             NoteTextEditor(
@@ -201,6 +217,23 @@ struct ContentView: View {
     }
 
     private var editorFooter: some View {
+        HStack(spacing: 0) {
+            footerStatus
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            footerStats
+                .layoutPriority(1)
+
+            footerActions
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .frame(minHeight: 32)
+        .background(.bar)
+    }
+
+    private var footerStatus: some View {
         HStack(spacing: 12) {
             Circle()
                 .fill(statusColor)
@@ -210,9 +243,11 @@ struct ContentView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+        }
+    }
 
-            Spacer()
-
+    private var footerActions: some View {
+        HStack(spacing: 12) {
             Text("\(store.notes.count) notes")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -245,10 +280,6 @@ struct ContentView: View {
             .help(store.rootURL.path)
             .accessibilityLabel("Open notes folder")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .frame(minHeight: 32)
-        .background(.bar)
     }
 
     private var floatingFormatControl: some View {
@@ -436,6 +467,54 @@ private enum NoteTextSearch {
         }
 
         return ranges
+    }
+}
+
+private struct NoteContentStats: Equatable {
+    let characterCount: Int
+    let wordCount: Int
+    let lineCount: Int
+
+    init(text: String) {
+        var characters = 0
+        var words = 0
+        var lines = text.isEmpty ? 0 : 1
+        var isInsideWord = false
+
+        for character in text {
+            characters += 1
+
+            if character.isNewline {
+                lines += 1
+            }
+
+            if character.isWhitespace || character.isNewline {
+                isInsideWord = false
+            } else if !isInsideWord {
+                words += 1
+                isInsideWord = true
+            }
+        }
+
+        self.characterCount = characters
+        self.wordCount = words
+        self.lineCount = lines
+    }
+
+    var fullLabel: String {
+        "\(characterCount) chars / \(wordCount) words / \(lineCount) lines"
+    }
+
+    var compactLabel: String {
+        "\(characterCount)c / \(wordCount)w / \(lineCount)l"
+    }
+
+    var tinyLabel: String {
+        "\(characterCount)c \(wordCount)w \(lineCount)l"
+    }
+
+    var accessibilityLabel: String {
+        "\(characterCount) characters, \(wordCount) words, \(lineCount) lines"
     }
 }
 
